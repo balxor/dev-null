@@ -1,4 +1,4 @@
-# Reverse Engineering the Crypto Market
+# Reverse Engineering the Crypto Market: A Quant & Backtesting Approach
 
 **Author:** Betha Morrison  
 **Level:** Intermediate - Advanced  
@@ -25,7 +25,7 @@
 
 ## 1. Framing: What "Reverse Engineering" Actually Means Here
 
-"Reverse engineering" here does not mean **predicting prices perfectly** — that's not possible. What it does mean:
+"Reverse engineering" here does not mean **predicting prices perfectly** - that's not possible. What it does mean:
 
 > **Identifying repeating statistical patterns in market data, then building a system that exploits those patterns consistently with a probabilistic edge.**
 
@@ -34,7 +34,7 @@ Think of it like a cryptanalyst who doesn't try to guess the encryption key dire
 Crypto has some practical advantages over traditional markets:
 - Tick-level historical data is freely available (Binance, Bybit, etc.)
 - On-chain data is fully transparent and tamper-proof
-- The market is young — there are more inefficiencies to exploit
+- The market is young - there are more inefficiencies to exploit
 - Exchange APIs are easy to integrate for live deployment
 
 ---
@@ -114,7 +114,7 @@ H = hurst_exponent(df['close'].values)
 print(f"Hurst Exponent BTC (daily close): {H:.4f}")
 ```
 
-Daily BTC data typically comes in around H ≈ 0.55–0.65 (slightly trending), though this shifts depending on the regime.
+Daily BTC data typically comes in around H ≈ 0.55-0.65 (slightly trending), though this shifts depending on the regime.
 
 ---
 
@@ -236,7 +236,7 @@ df_merged['sopr']          = sopr
 df_merged['mvrv']          = mvrv
 df_merged['exchange_flow'] = exchange_flow
 
-# On-chain data sometimes has gaps — forward fill
+# On-chain data sometimes has gaps - forward fill
 df_merged = df_merged.fillna(method='ffill')
 df_merged.dropna(inplace=True)
 ```
@@ -309,7 +309,7 @@ df_feat.dropna(inplace=True)
 
 ## 6. Regime Detection with Hidden Markov Models
 
-The market doesn't stay in one mode — it cycles between trending, choppy, and crashing phases. HMM lets us detect those states probabilistically without hard-coding thresholds.
+The market doesn't stay in one mode - it cycles between trending, choppy, and crashing phases. HMM lets us detect those states probabilistically without hard-coding thresholds.
 
 **Core math:**
 
@@ -384,7 +384,7 @@ df_feat = df_feat.iloc[-len(regimes):].copy()
 df_feat['regime'] = regimes
 ```
 
-**Expected output (example on BTC 2019–2024):**
+**Expected output (example on BTC 2019-2024):**
 ```
 === Regime Statistics ===
 Bear: mean_return=-0.0082, mean_vol=0.89, count=298 days
@@ -397,7 +397,7 @@ Transition Matrix:
   From Bull: [->Bear=0.03, ->Chop=0.08, ->Bull=0.89]
 ```
 
-High diagonal values mean regimes are persistent — that's what makes them exploitable.
+High diagonal values mean regimes are persistent - that's what makes them exploitable.
 
 ---
 
@@ -512,7 +512,7 @@ def vectorized_backtest(df, signal_col='final_signal',
                         fee=0.001, slippage=0.0005,
                         initial_capital=10000.0):
     """
-    Vectorized backtest — no look-ahead bias if signals
+    Vectorized backtest - no look-ahead bias if signals
     are constructed correctly (shift(1) for next-bar execution).
     """
     df = df.copy()
@@ -596,7 +596,7 @@ Where:
   T   = 365 (daily), 52 (weekly)
 ```
 
-Benchmarks: SR > 1.0 is the minimum bar, > 1.5 is decent, > 2.0 is strong. Live Sharpe is typically 30–50% lower than backtest.
+Benchmarks: SR > 1.0 is the minimum bar, > 1.5 is decent, > 2.0 is strong. Live Sharpe is typically 30-50% lower than backtest.
 
 **Sortino Ratio** (more appropriate for crypto):
 ```
@@ -675,7 +675,7 @@ This is the section most people skip, and it's the main reason strategies look g
 ### 10.1 Walk-Forward Architecture
 
 ```
-Historical data (e.g., 2019–2025):
+Historical data (e.g., 2019-2025):
 
 [==TRAIN 1==][TEST 1]
       [==TRAIN 2==][TEST 2]
@@ -787,11 +787,11 @@ mc_median, mc_lower, mc_upper = monte_carlo_simulation(
 ### 11.1 Pre-Deployment Checklist
 
 - [ ] **OOS Sharpe ≥ 0.7** (not in-sample)
-- [ ] **Live Sharpe is typically 30–50% lower than backtest** — adjust expectations accordingly
+- [ ] **Live Sharpe is typically 30-50% lower than backtest** - adjust expectations accordingly
 - [ ] **Paper trade for at least 30 days** before deploying real capital
-- [ ] **Realistic slippage model:** add 0.1–0.3% on top for market orders
+- [ ] **Realistic slippage model:** add 0.1-0.3% on top for market orders
 - [ ] **Stress-test drawdown:** multiply backtest MDD × 2 as a conservative estimate
-- [ ] **Regime model should be retrained monthly** — the market doesn't stay the same
+- [ ] **Regime model should be retrained monthly** - the market doesn't stay the same
 
 ### 11.2 Position Sizing with Kelly Criterion
 
@@ -895,14 +895,14 @@ This is the section most quant articles leave out, and it's the most important o
 
 | Problem | What it means | Mitigation |
 |---------|---------------|------------|
-| **Overfitting** | The strategy memorized historical data. Backtest Sharpe is typically 30–50% higher than live | Walk-forward + mandatory OOS validation |
-| **Regime shift** | An HMM trained on 2019–2021 data may not hold in 2024–2025 | Retrain periodically, monitor performance degradation |
+| **Overfitting** | The strategy memorized historical data. Backtest Sharpe is typically 30-50% higher than live | Walk-forward + mandatory OOS validation |
+| **Regime shift** | An HMM trained on 2019-2021 data may not hold in 2024-2025 | Retrain periodically, monitor performance degradation |
 | **Market impact** | Backtests don't model the fact that your own large orders move the price | Keep position size below 1% of daily volume |
 | **ETF distortion** | Since January 2024, spot BTC ETFs have changed on-chain dynamics | Incorporate ETF flow data into the model |
 
 ### 12.2 Survivorship Bias
 
-Exchange data only contains tokens that are still trading. Delisted altcoins aren't in the dataset — which means altcoin backtests will always look more optimistic than reality. The simplest fix is to restrict analysis to BTC/ETH, where historical data is the cleanest.
+Exchange data only contains tokens that are still trading. Delisted altcoins aren't in the dataset - which means altcoin backtests will always look more optimistic than reality. The simplest fix is to restrict analysis to BTC/ETH, where historical data is the cleanest.
 
 ```python
 # Use CoinGecko data if you need coverage of delisted tokens,
@@ -916,18 +916,18 @@ No system can predict or preempt:
 - Sudden regulatory action
 - Insider information (project teams, early-stage VCs)
 
-The realistic goal is a system with a **small but consistent statistical edge** (+0.5–1% alpha per month after costs), not one that "solves" the market.
+The realistic goal is a system with a **small but consistent statistical edge** (+0.5-1% alpha per month after costs), not one that "solves" the market.
 
 ---
 
 ## References & Tools
 
 **Libraries:**
-- `ccxt` — connects to 100+ exchanges
-- `vectorbt` — fast vectorized backtesting
-- `hmmlearn` — Hidden Markov Models
-- `backtrader` — event-based backtesting
-- `quantstats` — automated performance reports
+- `ccxt` - connects to 100+ exchanges
+- `vectorbt` - fast vectorized backtesting
+- `hmmlearn` - Hidden Markov Models
+- `backtrader` - event-based backtesting
+- `quantstats` - automated performance reports
 
 **Data Platforms:**
 - Glassnode API: [docs.glassnode.com](https://docs.glassnode.com)
