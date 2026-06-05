@@ -1,4 +1,4 @@
-# Reverse Engineering the Crypto Market: A Quant & Backtesting Approach
+# Reverse Engineering the Crypto Market
 
 **Author:** Betha Morrison  
 **Level:** Intermediate - Advanced  
