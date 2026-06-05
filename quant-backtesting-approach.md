@@ -8,7 +8,7 @@
 
 ## Table of Contents
 
-1. [Framing: What "Reverse Engineering" Actually Means Here](#1-framing-what-reverse-engineering-actually-means-here)
+1. [What "Reverse Engineering" Actually Means Here](#1-framing-what-reverse-engineering-actually-means-here)
 2. [Statistical Properties of Crypto Markets](#2-statistical-properties-of-crypto-markets)
 3. [End-to-End Pipeline](#3-end-to-end-pipeline)
 4. [Data Collection: CCXT + On-Chain API](#4-data-collection-ccxt--on-chain-api)
@@ -23,7 +23,7 @@
 
 ---
 
-## 1. Framing: What "Reverse Engineering" Actually Means Here
+## 1. What "Reverse Engineering" Actually Means Here
 
 "Reverse engineering" here does not mean **predicting prices perfectly** - that's not possible. What it does mean:
 
