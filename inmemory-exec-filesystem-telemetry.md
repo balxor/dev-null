@@ -6,14 +6,14 @@
 
 ---
 
-`memfd_create(2)` creates an anonymous tmpfs-backed inode in `shmem_mnt` — an
-internal kernel mount with no user-accessible path — and returns a file
+`memfd_create(2)` creates an anonymous tmpfs-backed inode in `shmem_mnt` - an
+internal kernel mount with no user-accessible path - and returns a file
 descriptor. Available since Linux 3.17. The fd behaves like a regular writable
 file but has no directory entry in any filesystem namespace.
 
 `inotify` and `fanotify` operate on dentries. An inode with no dentry cannot
 be watched by either interface, so executing an ELF binary staged through
-`memfd_create` produces no filesystem event. The audit subsystem is separate —
+`memfd_create` produces no filesystem event. The audit subsystem is separate -
 `execve`/`execveat` gets logged regardless, with the executable path recorded
 as `memfd:[label]` or `memfd: (deleted)`.
 
@@ -49,7 +49,7 @@ write(fd, image_buf, image_len);
 
 Two execution paths from here.
 
-**Via `/proc/self/fd/`** — works on any kernel with `/proc` mounted:
+**Via `/proc/self/fd/`** - works on any kernel with `/proc` mounted:
 
 ```c
 char path[32];
@@ -57,7 +57,7 @@ snprintf(path, sizeof(path), "/proc/self/fd/%d", fd);
 execve(path, argv, envp);
 ```
 
-**Via `execveat(2)` with `AT_EMPTY_PATH`** — Linux 3.19+, no `/proc` dependency.
+**Via `execveat(2)` with `AT_EMPTY_PATH`** - Linux 3.19+, no `/proc` dependency.
 glibc `fexecve(3)` uses this internally since glibc 2.27; older versions fell
 back to the `/proc/self/fd/` path:
 
@@ -293,7 +293,7 @@ int main(void)
 ```
 
 The global `target` is at the same virtual address in parent and child after
-`fork(2)` — COW preserves the VA layout. The parent uses that address directly
+`fork(2)` - COW preserves the VA layout. The parent uses that address directly
 as the remote `iov_base`.
 
 ---
@@ -309,13 +309,13 @@ executable memfd:
 | `1` | `memfd_create()` without `MFD_NOEXEC_SEAL` emits dmesg warning; exec still works |
 | `2` | `memfd_create()` without `MFD_NOEXEC_SEAL` fails with `EACCES` |
 
-At level 2, passing `MFD_EXEC` explicitly also fails — it creates an executable
+At level 2, passing `MFD_EXEC` explicitly also fails - it creates an executable
 memfd without `MFD_NOEXEC_SEAL`, which is what level 2 rejects. All mainstream
 distros ship at level 0 in 2026. Can be set per container via pid namespace.
 
 **seccomp-bpf** blocking `__NR_memfd_create` (319/x86-64, 279/aarch64, 385/arm)
 prevents anonymous inode creation at the syscall boundary. Requires an explicit
-custom policy — not a default on standard Linux installs.
+custom policy - not a default on standard Linux installs.
 
 **eBPF kprobe/tracepoint on `do_execveat_common`** fires on every execution
 including from anonymous fds. At that hook point the probe has access to the
@@ -333,4 +333,4 @@ ptrace-based operations.
 ---
 
 *Behavior may vary across kernel versions and distributions.*  
-*— Betha Morrison*
+*- Betha Morrison*
