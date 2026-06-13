@@ -1,54 +1,59 @@
 # Reverse Engineering the Crypto Market
 
-**Author:** Betha Morrison  
-**Level:** Intermediate - Advanced  
-**Focus:** Algorithmic approach, end-to-end pipeline, working code and honest limitations
+**Author:** Betha Morrison
+**Level:** Intermediate–Advanced
+**Scope:** A complete research pipeline — data collection, feature engineering, regime detection, signal generation, backtesting, validation, and live deployment — with working code and documented limitations.
 
 ---
 
 ## Table of Contents
 
-1. [What "Reverse Engineering" Actually Means Here](#1-framing-what-reverse-engineering-actually-means-here)
+1. [Scope and Definitions](#1-scope-and-definitions)
 2. [Statistical Properties of Crypto Markets](#2-statistical-properties-of-crypto-markets)
-3. [End-to-End Pipeline](#3-end-to-end-pipeline)
-4. [Data Collection: CCXT + On-Chain API](#4-data-collection-ccxt--on-chain-api)
+3. [Pipeline Overview](#3-pipeline-overview)
+4. [Data Collection](#4-data-collection)
 5. [Feature Engineering](#5-feature-engineering)
 6. [Regime Detection with Hidden Markov Models](#6-regime-detection-with-hidden-markov-models)
-7. [Signal Generation: Strategies with Actual Formulas](#7-signal-generation-strategies-with-actual-formulas)
-8. [Backtesting Correctly](#8-backtesting-correctly)
+7. [Signal Generation](#7-signal-generation)
+8. [Backtesting](#8-backtesting)
 9. [Evaluation Metrics](#9-evaluation-metrics)
-10. [Walk-Forward Validation & Overfitting Prevention](#10-walk-forward-validation--overfitting-prevention)
-11. [From Backtest to Live Trading](#11-from-backtest-to-live-trading)
-12. [Honest Limitations](#12-honest-limitations)
+10. [Walk-Forward Validation and Robustness Checks](#10-walk-forward-validation-and-robustness-checks)
+11. [Deployment](#11-deployment)
+12. [Limitations](#12-limitations)
+13. [References and Tools](#13-references-and-tools)
 
 ---
 
-## 1. What "Reverse Engineering" Actually Means Here
+## 1. Scope and Definitions
 
-"Reverse engineering" here does not mean **predicting prices perfectly** - that's not possible. What it does mean:
+This article does not attempt to predict prices. Reliable point prediction of crypto prices is not achievable with the methods described here. The objective is narrower and measurable:
 
-> **Identifying repeating statistical patterns in market data, then building a system that exploits those patterns consistently with a probabilistic edge.**
+> Identify repeating statistical patterns in market data and build a system that exploits them with a positive expected value after costs.
 
-Think of it like a cryptanalyst who doesn't try to guess the encryption key directly, but studies character distribution to find structural weaknesses.
+The analogy is structural cryptanalysis: rather than recovering a key directly, the analyst studies distributional structure to locate exploitable weaknesses. Applied to markets, this means modeling return distributions, regime persistence, and cross-feature relationships rather than forecasting individual candles.
 
-Crypto has some practical advantages over traditional markets:
-- Tick-level historical data is freely available (Binance, Bybit, etc.)
-- On-chain data is fully transparent and tamper-proof
-- The market is young - there are more inefficiencies to exploit
-- Exchange APIs are easy to integrate for live deployment
+Crypto markets offer practical advantages for this kind of research:
+
+* Tick-level and OHLCV historical data are freely available from major exchanges.
+* On-chain data is publicly verifiable.
+* The market is relatively young, with more documented inefficiencies than mature equity markets.
+* Exchange APIs are straightforward to integrate for live execution.
+
+These advantages do not remove risk. The remaining sections quantify the constraints and the realistic size of any edge.
 
 ---
 
 ## 2. Statistical Properties of Crypto Markets
 
-Before building anything, understand what you're actually working with.
+The modeling choices in later sections depend on the statistical properties established here.
 
 ### 2.1 Return Distribution
 
-Crypto returns are **not normally distributed** (non-Gaussian). They show:
-- **Fat tails** (kurtosis > 3): extreme events happen more often than a normal distribution would predict
-- **Negative skewness** (on daily timeframes): crashes are sharper than rallies
-- **Volatility clustering**: high-volatility periods tend to follow other high-volatility periods (ARCH effects)
+Crypto returns are non-Gaussian. Three properties are consistently observed:
+
+* **Fat tails** (excess kurtosis > 0): extreme moves occur more frequently than a normal distribution predicts.
+* **Negative skewness** on daily timeframes: drawdowns tend to be sharper than rallies.
+* **Volatility clustering**: high-volatility periods follow high-volatility periods (ARCH effects).
 
 ```python
 import numpy as np
@@ -56,107 +61,121 @@ import pandas as pd
 from scipy import stats
 import ccxt
 
-# Fetch daily BTC data
 exchange = ccxt.binance()
 ohlcv = exchange.fetch_ohlcv('BTC/USDT', timeframe='1d', limit=500)
-df = pd.DataFrame(ohlcv, columns=['timestamp','open','high','low','close','volume'])
-df['returns'] = df['close'].pct_change().dropna()
+df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+df['returns'] = df['close'].pct_change()
 
-# Test for normality
-print(f"Kurtosis: {stats.kurtosis(df['returns'].dropna()):.2f}")  # Normal = 0
-print(f"Skewness: {stats.skew(df['returns'].dropna()):.2f}")      # Normal = 0
+returns = df['returns'].dropna()
 
-# Jarque-Bera test (p < 0.05 = reject normality)
-jb_stat, jb_p = stats.jarque_bera(df['returns'].dropna())
+# scipy.stats.kurtosis returns EXCESS kurtosis (normal = 0)
+print(f"Excess kurtosis: {stats.kurtosis(returns):.2f}")
+print(f"Skewness:        {stats.skew(returns):.2f}")
+
+# Jarque-Bera: p < 0.05 rejects normality
+jb_stat, jb_p = stats.jarque_bera(returns)
 print(f"Jarque-Bera p-value: {jb_p:.6f}")
 ```
 
-Strategies that assume normality (standard Bollinger Bands, for example) will systematically underestimate tail risk.
+Strategies that assume normality, such as standard Bollinger Bands sized on a normal distribution, systematically underestimate tail risk on this data.
 
-### 2.2 Autocorrelation and Mean Reversion
+### 2.2 Stationarity and Autocorrelation
 
 ```python
 from statsmodels.tsa.stattools import adfuller, acf
 
-# ADF Test: is the series stationary (i.e., not a random walk)?
-adf_result = adfuller(df['close'])
-print(f"ADF p-value (price): {adf_result[1]:.4f}")  # Usually > 0.05 -> non-stationary
+# ADF on price: typically non-stationary (p > 0.05)
+print(f"ADF p-value (price):   {adfuller(df['close'].dropna())[1]:.4f}")
 
-# Returns are typically stationary
-adf_result_ret = adfuller(df['returns'].dropna())
-print(f"ADF p-value (returns): {adf_result_ret[1]:.4f}")  # Usually < 0.05 -> stationary
+# ADF on returns: typically stationary (p < 0.05)
+print(f"ADF p-value (returns): {adfuller(returns)[1]:.4f}")
 
-# Autocorrelation of returns
-acf_vals = acf(df['returns'].dropna(), nlags=10)
+# Return autocorrelation is typically near zero,
+# so direct prediction from lagged returns alone is weak
+acf_vals = acf(returns, nlags=10)
 print("ACF returns (lag 1-5):", acf_vals[1:6])
-# Typically close to zero -> direct prediction from past returns is hard
 ```
+
+Near-zero return autocorrelation is the reason this pipeline relies on regime structure and cross-features rather than direct return prediction.
 
 ### 2.3 Hurst Exponent
 
-The Hurst Exponent (H) measures whether a series is trending, mean-reverting, or random:
+The Hurst exponent (H) characterizes long-range dependence:
 
 ```
-H > 0.5  -> Trending (persistent)
-H = 0.5  -> Random walk
-H < 0.5  -> Mean-reverting (anti-persistent)
+H > 0.5  -> persistent (trending)
+H = 0.5  -> random walk
+H < 0.5  -> anti-persistent (mean-reverting)
 ```
+
+The estimator below uses the structure-function (generalized variance) method, not classical rescaled-range (R/S) analysis. It is faster and adequate for a directional read, but it is sensitive to `max_lag` and is a rough estimate rather than a precise measurement.
 
 ```python
 def hurst_exponent(ts, max_lag=20):
-    """Compute Hurst Exponent via R/S Analysis"""
-    lags = range(2, max_lag)
-    tau  = [np.std(np.subtract(ts[lag:], ts[:-lag])) for lag in lags]
-    poly = np.polyfit(np.log(lags), np.log(tau), 1)
-    return poly[0]
+    """Estimate the Hurst exponent via the structure-function method.
 
-H = hurst_exponent(df['close'].values)
-print(f"Hurst Exponent BTC (daily close): {H:.4f}")
+    Note: this is not classical R/S analysis. The slope of
+    log(std of lagged differences) vs log(lag) estimates H.
+    """
+    ts = np.asarray(ts, dtype=float)
+    lags = range(2, max_lag)
+    tau = [np.std(ts[lag:] - ts[:-lag]) for lag in lags]
+    slope = np.polyfit(np.log(lags), np.log(tau), 1)[0]
+    return slope
+
+H = hurst_exponent(df['close'].dropna().values)
+print(f"Hurst exponent (BTC daily close): {H:.4f}")
 ```
 
-Daily BTC data typically comes in around H ≈ 0.55-0.65 (slightly trending), though this shifts depending on the regime.
+Daily BTC close commonly estimates around H ≈ 0.55–0.65 (mildly persistent), but the value shifts with the sample window and the prevailing regime, so it is treated as a descriptive statistic rather than a fixed property.
 
 ---
 
-## 3. End-to-End Pipeline
+## 3. Pipeline Overview
 
 ```
 Raw Data (OHLCV + On-Chain)
-         │
-         ▼
+        |
+        v
 Feature Engineering
 (returns, volatility, on-chain metrics)
-         │
-         ▼
+        |
+        v
 Regime Detection (HMM)
-         │
-         ├──► Regime = Bull  -> Strategy A (Trend Following)
-         ├──► Regime = Bear  -> Strategy B (Short / Hedge)
-         └──► Regime = Chop  -> Strategy C (Mean Reversion)
-                   │
-                   ▼
-           Signal Generation
-           (entry/exit rules)
-                   │
-                   ▼
-           Position Sizing
-           (Kelly, fixed fractional)
-                   │
-                   ▼
-           Backtesting Engine
-           (vectorbt / backtrader)
-                   │
-                   ▼
-           Walk-Forward Validation
-                   │
-                   ▼
-           Performance Evaluation
-           (Sharpe, Sortino, Calmar, MDD)
+        |
+        +--> Regime = Bull  -> Trend Following
+        +--> Regime = Bear  -> Short / Hedge
+        +--> Regime = Chop  -> Mean Reversion
+                 |
+                 v
+        Signal Generation (entry/exit rules)
+                 |
+                 v
+        Position Sizing (Kelly, fixed fractional)
+                 |
+                 v
+        Backtesting (vectorized / vectorbt)
+                 |
+                 v
+        Walk-Forward Validation
+                 |
+                 v
+        Performance Evaluation
+        (Sharpe, Sortino, Calmar, MDD)
+```
+
+A design constraint applied throughout: the feature set used for regime detection is fixed in one place and reused at fit time, in walk-forward validation, and in live inference. A mismatch between the features used to fit the scaler/model and the features supplied at inference is a common and silent source of failure, so it is centralized:
+
+```python
+# Single source of truth for regime features.
+# The scaler and HMM are fit on exactly these columns,
+# and inference must supply exactly these columns in this order.
+REGIME_FEATURES = ['log_returns', 'volatility_7d', 'vol_ratio']
 ```
 
 ---
 
-## 4. Data Collection: CCXT + On-Chain API
+## 4. Data Collection
 
 ### 4.1 Price Data via CCXT
 
@@ -166,10 +185,10 @@ import pandas as pd
 import time
 
 def fetch_full_ohlcv(symbol='BTC/USDT', timeframe='1h', since_days=365):
-    """Fetch full OHLCV history from Binance"""
+    """Fetch paginated OHLCV history from Binance."""
     exchange = ccxt.binance({'enableRateLimit': True})
     since = exchange.parse8601(
-        (pd.Timestamp.now() - pd.Timedelta(days=since_days)).strftime('%Y-%m-%dT%H:%M:%SZ')
+        (pd.Timestamp.utcnow() - pd.Timedelta(days=since_days)).strftime('%Y-%m-%dT%H:%M:%SZ')
     )
 
     all_ohlcv = []
@@ -183,15 +202,18 @@ def fetch_full_ohlcv(symbol='BTC/USDT', timeframe='1h', since_days=365):
         if ohlcv[-1][0] >= exchange.milliseconds():
             break
 
-    df = pd.DataFrame(all_ohlcv, columns=['timestamp','open','high','low','close','volume'])
+    df = pd.DataFrame(all_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
     df.set_index('datetime', inplace=True)
+    df = df[~df.index.duplicated(keep='first')]  # pagination can yield overlaps
     return df
 
 df = fetch_full_ohlcv('BTC/USDT', '1d', since_days=1000)
 ```
 
-### 4.2 On-Chain Data via Glassnode API
+### 4.2 On-Chain Data via Glassnode
+
+On-chain metrics are optional in this pipeline. Regime detection uses only price-derived features (Section 3), while on-chain data feeds a separate divergence signal (Section 7.3). Treat the free-tier availability and exact metric paths as subject to change, and verify them against current Glassnode documentation.
 
 ```python
 import requests
@@ -199,47 +221,44 @@ import requests
 GLASSNODE_API_KEY = "your_api_key"
 
 def get_glassnode_metric(metric, asset='BTC', resolution='24h'):
-    """
-    Free-tier metrics include:
-    - indicators/sopr  -> Spent Output Profit Ratio
-    - market/mvrv      -> Market Value to Realized Value
-    - market/nupl      -> Net Unrealized Profit/Loss
-    - distribution/exchange_net_position_change -> Exchange flow
+    """Fetch a single on-chain metric as a pandas Series.
+
+    Example metric paths (verify current availability and tier):
+      indicators/sopr  -> Spent Output Profit Ratio
+      market/mvrv      -> Market Value to Realized Value
+      market/nupl      -> Net Unrealized Profit/Loss
+      distribution/exchange_net_position_change -> Exchange flow
     """
     url = f"https://api.glassnode.com/v1/metrics/{metric}"
-    params = {
-        'a': asset,
-        'i': resolution,
-        'api_key': GLASSNODE_API_KEY
-    }
-    response = requests.get(url, params=params)
-    data = response.json()
+    params = {'a': asset, 'i': resolution, 'api_key': GLASSNODE_API_KEY}
+    response = requests.get(url, params=params, timeout=30)
+    response.raise_for_status()
 
-    df = pd.DataFrame(data)
-    df['datetime'] = pd.to_datetime(df['t'], unit='s')
-    df.set_index('datetime', inplace=True)
-    df.rename(columns={'v': metric}, inplace=True)
-    return df[metric]
+    data = pd.DataFrame(response.json())
+    data['datetime'] = pd.to_datetime(data['t'], unit='s')
+    data.set_index('datetime', inplace=True)
+    return data['v'].rename(metric)
 
-# Usage
-sopr          = get_glassnode_metric('indicators/sopr')
-mvrv          = get_glassnode_metric('market/mvrv')
+sopr = get_glassnode_metric('indicators/sopr')
+mvrv = get_glassnode_metric('market/mvrv')
 exchange_flow = get_glassnode_metric('distribution/exchange_net_position_change')
 ```
 
 ### 4.3 Merge and Alignment
 
 ```python
-# Merge all data sources
-df_merged = df[['close','volume']].copy()
-df_merged['sopr']          = sopr
-df_merged['mvrv']          = mvrv
+df_merged = df[['high', 'low', 'close', 'volume']].copy()
+df_merged['sopr'] = sopr
+df_merged['mvrv'] = mvrv
 df_merged['exchange_flow'] = exchange_flow
 
-# On-chain data sometimes has gaps - forward fill
-df_merged = df_merged.fillna(method='ffill')
-df_merged.dropna(inplace=True)
+# On-chain series can have gaps relative to the price index.
+# Forward-fill only carries the last known value forward (no future leakage),
+# then drop any remaining leading NaNs.
+df_merged = df_merged.ffill().dropna()
 ```
+
+Forward-fill uses only past observations, so it does not introduce look-ahead bias. The `high` and `low` columns are retained because the ATR feature requires them.
 
 ---
 
@@ -252,51 +271,52 @@ def compute_price_features(df):
     df = df.copy()
 
     # Returns
-    df['returns_1d']  = df['close'].pct_change()
-    df['returns_7d']  = df['close'].pct_change(7)
+    df['returns_1d'] = df['close'].pct_change()
+    df['returns_7d'] = df['close'].pct_change(7)
     df['log_returns'] = np.log(df['close'] / df['close'].shift(1))
 
-    # Realized volatility
-    df['volatility_7d']  = df['log_returns'].rolling(7).std()  * np.sqrt(365)
+    # Realized volatility (annualized; 365 trading days for crypto)
+    df['volatility_7d'] = df['log_returns'].rolling(7).std() * np.sqrt(365)
     df['volatility_30d'] = df['log_returns'].rolling(30).std() * np.sqrt(365)
-    df['vol_ratio']      = df['volatility_7d'] / df['volatility_30d']  # volatility regime signal
+    df['vol_ratio'] = df['volatility_7d'] / df['volatility_30d']
 
     # Momentum
-    df['roc_14'] = df['close'].pct_change(14)  # Rate of Change
+    df['roc_14'] = df['close'].pct_change(14)
     df['roc_30'] = df['close'].pct_change(30)
 
-    # Moving averages
-    df['sma_50']          = df['close'].rolling(50).mean()
-    df['sma_200']         = df['close'].rolling(200).mean()
+    # Trend reference
+    df['sma_50'] = df['close'].rolling(50).mean()
+    df['sma_200'] = df['close'].rolling(200).mean()
     df['price_vs_sma200'] = (df['close'] - df['sma_200']) / df['sma_200']
 
-    # Normalized ATR
-    df['hl'] = df['high'] - df['low']
-    df['hc'] = abs(df['high'] - df['close'].shift(1))
-    df['lc'] = abs(df['low']  - df['close'].shift(1))
-    df['tr'] = df[['hl','hc','lc']].max(axis=1)
-    df['atr_14'] = df['tr'].rolling(14).mean()
-    df['natr']   = df['atr_14'] / df['close']
+    # Normalized ATR (computed in a local frame to avoid leaving helper columns)
+    tr = pd.concat([
+        df['high'] - df['low'],
+        (df['high'] - df['close'].shift(1)).abs(),
+        (df['low'] - df['close'].shift(1)).abs(),
+    ], axis=1).max(axis=1)
+    df['atr_14'] = tr.rolling(14).mean()
+    df['natr'] = df['atr_14'] / df['close']
 
     return df
+```
 
-# 5.2 On-Chain Features
+### 5.2 On-Chain Features
+
+```python
 def compute_onchain_features(df):
     df = df.copy()
 
-    # MVRV Z-Score (rolling normalization)
+    # MVRV Z-score, normalized on a rolling one-year window (past data only)
     mvrv_mean = df['mvrv'].rolling(365).mean()
-    mvrv_std  = df['mvrv'].rolling(365).std()
+    mvrv_std = df['mvrv'].rolling(365).std()
     df['mvrv_zscore'] = (df['mvrv'] - mvrv_mean) / mvrv_std
 
-    # Smoothed SOPR (reduce noise)
+    # Smoothed SOPR to reduce day-to-day noise
     df['sopr_7d_ma'] = df['sopr'].rolling(7).mean()
 
-    # Exchange flow momentum
+    # Net exchange flow momentum
     df['flow_momentum'] = df['exchange_flow'].rolling(7).sum()
-
-    # Price-SOPR divergence: price rising while SOPR falls = distribution
-    df['price_sopr_div'] = df['returns_7d'] - df['sopr'].pct_change(7)
 
     return df
 
@@ -305,21 +325,28 @@ df_feat = compute_onchain_features(df_feat)
 df_feat.dropna(inplace=True)
 ```
 
+All rolling windows reference only past observations. Normalization is computed on rolling windows rather than the full sample, which prevents the data leakage discussed in Section 8.3.
+
 ---
 
 ## 6. Regime Detection with Hidden Markov Models
 
-The market doesn't stay in one mode - it cycles between trending, choppy and crashing phases. HMM lets us detect those states probabilistically without hard-coding thresholds.
+Crypto markets cycle between trending, ranging, and declining phases. A Gaussian HMM assigns each observation a regime probabilistically, without manually chosen thresholds.
 
-**Core math:**
+Model components:
 
 ```
-State sequence:  S_1 -> S_2 -> S_3 -> ... -> S_t
-Observation:     O_1,  O_2,  O_3, ...,  O_t
+State sequence:    S_1 -> S_2 -> ... -> S_t
+Observations:      O_1,   O_2,  ...,  O_t
 
 Transition matrix A:  P(S_t | S_{t-1})
-Emission matrix B:    P(O_t | S_t)  [Gaussian in this case]
+Emission matrix B:    P(O_t | S_t)   [Gaussian here]
 ```
+
+The implementation below fixes two correctness issues that are easy to introduce:
+
+1. The model is fit on a single cleaned frame, and labels are aligned to that frame's index. Computing the regime label statistics against a differently filtered series (for example `df['log_returns'].dropna()`) causes a length and alignment mismatch whenever feature columns and the return column have different NaN patterns.
+2. The fitted `scaler`, `model`, and `state_map` are returned together so inference reuses the exact transformation applied at training time.
 
 ```python
 from hmmlearn import hmm
@@ -327,12 +354,17 @@ from sklearn.preprocessing import StandardScaler
 import warnings
 warnings.filterwarnings('ignore')
 
-def fit_hmm_regimes(df, n_regimes=3, features=['log_returns', 'volatility_7d', 'vol_ratio']):
+def fit_hmm_regimes(df, n_regimes=3, features=REGIME_FEATURES, verbose=True):
+    """Fit a Gaussian HMM and return regimes aligned to the input index.
+
+    Returns:
+        regimes : pd.Series of labeled states (0=Bear, 1=Chop, 2=Bull)
+                  indexed to the rows actually used (after dropna on features)
+        model, scaler, state_map : reusable for out-of-sample inference
     """
-    Fit a Gaussian HMM for regime detection.
-    n_regimes=3: Bull, Bear, Chop (sideways)
-    """
-    X = df[features].dropna().values
+    clean = df.dropna(subset=features)
+    X = clean[features].values
+
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
@@ -340,51 +372,57 @@ def fit_hmm_regimes(df, n_regimes=3, features=['log_returns', 'volatility_7d', '
         n_components=n_regimes,
         covariance_type='full',
         n_iter=1000,
-        random_state=42
+        random_state=42,
     )
     model.fit(X_scaled)
+    raw_states = model.predict(X_scaled)
 
-    states = model.predict(X_scaled)
-
-    # Label states by mean return (0=Bear, 1=Chop, 2=Bull)
-    regime_stats = {}
+    # Rank raw states by mean log-return, using the SAME aligned frame
+    aligned_returns = clean['log_returns'].values
+    stats_by_state = {}
     for s in range(n_regimes):
-        mask = states == s
-        regime_stats[s] = {
-            'mean_return': df['log_returns'].dropna().values[mask].mean(),
-            'mean_vol':    df['volatility_7d'].dropna().values[mask].mean(),
-            'count':       mask.sum()
+        mask = raw_states == s
+        stats_by_state[s] = {
+            'mean_return': aligned_returns[mask].mean(),
+            'mean_vol': clean['volatility_7d'].values[mask].mean(),
+            'count': int(mask.sum()),
         }
 
-    sorted_states = sorted(regime_stats.keys(), key=lambda s: regime_stats[s]['mean_return'])
-    state_map     = {old: new for new, old in enumerate(sorted_states)}
-    states_labeled = np.array([state_map[s] for s in states])
+    ordered = sorted(stats_by_state, key=lambda s: stats_by_state[s]['mean_return'])
+    state_map = {raw: rank for rank, raw in enumerate(ordered)}
+    labeled = np.array([state_map[s] for s in raw_states])
 
     labels = {0: 'Bear', 1: 'Chop', 2: 'Bull'}
+    if verbose:
+        print("\n=== Regime Statistics ===")
+        for rank, name in labels.items():
+            st = stats_by_state[ordered[rank]]
+            print(f"{name}: mean_return={st['mean_return']:.4f}, "
+                  f"mean_vol={st['mean_vol']:.4f}, count={st['count']} days")
+        print("\nTransition Matrix:")
+        tm = model.transmat_
+        for i in range(n_regimes):
+            row = [f"->{labels[j]}={tm[ordered[i]][ordered[j]]:.2f}" for j in range(n_regimes)]
+            print(f"  From {labels[i]}: {row}")
 
-    print("\n=== Regime Statistics ===")
-    for i, label in labels.items():
-        orig_state = sorted_states[i]
-        st = regime_stats[orig_state]
-        print(f"{label}: mean_return={st['mean_return']:.4f}, "
-              f"mean_vol={st['mean_vol']:.4f}, "
-              f"count={st['count']} days")
+    return pd.Series(labeled, index=clean.index, name='regime'), model, scaler, state_map
 
-    print("\nTransition Matrix:")
-    tm = model.transmat_
-    for i in range(n_regimes):
-        row = [tm[sorted_states[i]][sorted_states[j]] for j in range(n_regimes)]
-        print(f"  From {labels[i]}: {['->'+labels[j]+f'={v:.2f}' for j,v in enumerate(row)]}")
 
-    return states_labeled, model, scaler, state_map
+def predict_regimes(df, model, scaler, state_map, features=REGIME_FEATURES):
+    """Apply a fitted HMM to new data, returning regimes aligned to the index."""
+    clean = df.dropna(subset=features)
+    X_scaled = scaler.transform(clean[features].values)
+    raw = model.predict(X_scaled)
+    labeled = np.array([state_map.get(s, 1) for s in raw])  # default to Chop if unseen
+    return pd.Series(labeled, index=clean.index, name='regime')
 
-features = ['log_returns', 'volatility_7d', 'vol_ratio', 'mvrv_zscore', 'sopr_7d_ma']
-regimes, hmm_model, scaler, state_map = fit_hmm_regimes(df_feat, n_regimes=3, features=features)
-df_feat = df_feat.iloc[-len(regimes):].copy()
-df_feat['regime'] = regimes
+
+regimes, hmm_model, hmm_scaler, hmm_state_map = fit_hmm_regimes(df_feat)
+df_feat = df_feat.join(regimes, how='inner')
 ```
 
-**Expected output (example on BTC 2019-2024):**
+Example output on BTC daily data (2019–2024):
+
 ```
 === Regime Statistics ===
 Bear: mean_return=-0.0082, mean_vol=0.89, count=298 days
@@ -392,187 +430,182 @@ Chop: mean_return=+0.0012, mean_vol=0.54, count=412 days
 Bull: mean_return=+0.0094, mean_vol=0.73, count=290 days
 
 Transition Matrix:
-  From Bear: [->Bear=0.91, ->Chop=0.07, ->Bull=0.02]
-  From Chop: [->Bear=0.05, ->Chop=0.88, ->Bull=0.07]
-  From Bull: [->Bear=0.03, ->Chop=0.08, ->Bull=0.89]
+  From Bear: ['->Bear=0.91', '->Chop=0.07', '->Bull=0.02']
+  From Chop: ['->Bear=0.05', '->Chop=0.88', '->Bull=0.07']
+  From Bull: ['->Bear=0.03', '->Chop=0.08', '->Bull=0.89']
 ```
 
-High diagonal values mean regimes are persistent - that's what makes them exploitable.
+High diagonal probabilities indicate persistent regimes. Persistence is the property that makes regime-conditioned strategies viable: a state detected today is likely to hold over the next several observations.
 
 ---
 
-## 7. Signal Generation: Strategies with Actual Formulas
+## 7. Signal Generation
 
-### 7.1 Trend Following (active in Bull/Bear regimes)
+Each sub-strategy is conditioned on the regime so that it is active only where its logic applies.
+
+### 7.1 Trend Following (Bull and Bear regimes)
 
 ```python
 def trend_signal(df):
-    """
-    SMA crossover with regime filter.
-    Long  -> only in Bull regime
-    Short -> only in Bear regime
+    """SMA crossover with a regime filter.
+    Long in Bull regime, short in Bear regime, flat otherwise.
     """
     df = df.copy()
-
     sma_fast = df['close'].rolling(20).mean()
     sma_slow = df['close'].rolling(50).mean()
 
-    df['trend_signal'] = 0
-    df.loc[(sma_fast > sma_slow) & (df['regime'] == 2), 'trend_signal'] =  1  # Long
-    df.loc[(sma_fast < sma_slow) & (df['regime'] == 0), 'trend_signal'] = -1  # Short
-
-    return df['trend_signal']
+    signal = pd.Series(0, index=df.index)
+    signal[(sma_fast > sma_slow) & (df['regime'] == 2)] = 1
+    signal[(sma_fast < sma_slow) & (df['regime'] == 0)] = -1
+    return signal
 ```
 
-### 7.2 Mean Reversion (active in Chop regime)
-
-Using a rolling Z-Score:
+### 7.2 Mean Reversion (Chop regime)
 
 ```
-z_score_t = (price_t - μ_window) / σ_window
+z_t = (price_t - mean_window) / std_window
 
-Entry long  -> z < -1.5 AND regime == Chop
-Entry short -> z > +1.5 AND regime == Chop
-Exit        -> |z| < 0.5
+Long  -> z < -1.5 and regime == Chop
+Short -> z > +1.5 and regime == Chop
+Exit  -> |z| < 0.5
 ```
 
 ```python
 def mean_reversion_signal(df, window=20, entry_z=1.5, exit_z=0.5):
-    """Z-score mean reversion, active only in Chop regime"""
+    """Z-score mean reversion, active only in the Chop regime."""
     df = df.copy()
-
     rolling_mean = df['close'].rolling(window).mean()
-    rolling_std  = df['close'].rolling(window).std()
-    df['zscore'] = (df['close'] - rolling_mean) / rolling_std
+    rolling_std = df['close'].rolling(window).std()
+    zscore = (df['close'] - rolling_mean) / rolling_std
 
-    df['mr_signal'] = 0
-    df.loc[(df['zscore'] < -entry_z) & (df['regime'] == 1), 'mr_signal'] =  1
-    df.loc[(df['zscore'] >  entry_z) & (df['regime'] == 1), 'mr_signal'] = -1
+    signal = pd.Series(0, index=df.index)
+    signal[(zscore < -entry_z) & (df['regime'] == 1)] = 1
+    signal[(zscore > entry_z) & (df['regime'] == 1)] = -1
 
-    # Exit when price returns to mean
-    prev_signal = df['mr_signal'].replace(0, np.nan).ffill()
-    df.loc[(abs(df['zscore']) < exit_z) & (prev_signal != 0), 'mr_signal'] = 0
-
-    return df['mr_signal']
+    # Flatten when price returns toward the mean
+    held = signal.replace(0, np.nan).ffill()
+    signal[(zscore.abs() < exit_z) & (held != 0)] = 0
+    return signal
 ```
 
-### 7.3 On-Chain Divergence Signal
+### 7.3 On-Chain Divergence
+
+This signal requires the `sopr` and `mvrv` columns. It returns all zeros when they are absent, so the composite remains well defined on price-only data.
 
 ```python
 def onchain_divergence_signal(df):
-    """
-    Bullish divergence: price falling but SOPR recovering + MVRV < 1.0
-    Bearish divergence: price rising but SOPR falling + MVRV > 2.5 (distribution)
+    """Divergence between price and on-chain profitability.
+
+    Bullish: price falling, SOPR recovering, MVRV < 1.0 (capitulation zone)
+    Bearish: price rising, SOPR falling, MVRV > 2.5 (distribution zone)
+
+    Returns zeros if on-chain columns are not present.
     """
     df = df.copy()
+    if not {'sopr', 'mvrv'}.issubset(df.columns):
+        return pd.Series(0, index=df.index)
 
     price_trend = np.sign(df['returns_7d'])
-    sopr_trend  = np.sign(df['sopr'].pct_change(7))
+    sopr_trend = np.sign(df['sopr'].pct_change(7))
 
-    df['oc_signal'] = 0
-    df.loc[(price_trend < 0) & (sopr_trend > 0) & (df['mvrv'] < 1.0), 'oc_signal'] =  1
-    df.loc[(price_trend > 0) & (sopr_trend < 0) & (df['mvrv'] > 2.5), 'oc_signal'] = -1
-
-    return df['oc_signal']
+    signal = pd.Series(0, index=df.index)
+    signal[(price_trend < 0) & (sopr_trend > 0) & (df['mvrv'] < 1.0)] = 1
+    signal[(price_trend > 0) & (sopr_trend < 0) & (df['mvrv'] > 2.5)] = -1
+    return signal
 ```
 
 ### 7.4 Composite Signal
 
 ```python
-def composite_signal(df, weights={'trend': 0.4, 'mr': 0.3, 'onchain': 0.3}):
-    """Combine signals with weights"""
+def composite_signal(df, weights=None):
+    """Weighted combination of the sub-signals, thresholded to a discrete position."""
+    if weights is None:
+        weights = {'trend': 0.4, 'mr': 0.3, 'onchain': 0.3}
     df = df.copy()
 
-    df['trend_signal']   = trend_signal(df)
-    df['mr_signal']      = mean_reversion_signal(df)
+    df['trend_signal'] = trend_signal(df)
+    df['mr_signal'] = mean_reversion_signal(df)
     df['onchain_signal'] = onchain_divergence_signal(df)
 
     df['composite'] = (
-        df['trend_signal']   * weights['trend'] +
-        df['mr_signal']      * weights['mr'] +
-        df['onchain_signal'] * weights['onchain']
+        df['trend_signal'] * weights['trend']
+        + df['mr_signal'] * weights['mr']
+        + df['onchain_signal'] * weights['onchain']
     )
 
-    # Entry threshold
     df['final_signal'] = 0
-    df.loc[df['composite'] >  0.25, 'final_signal'] =  1
+    df.loc[df['composite'] > 0.25, 'final_signal'] = 1
     df.loc[df['composite'] < -0.25, 'final_signal'] = -1
-
     return df
 ```
 
 ---
 
-## 8. Backtesting Correctly
+## 8. Backtesting
 
-### 8.1 Vectorized Backtesting (fast, good for iteration)
+### 8.1 Vectorized Backtest
 
 ```python
 def vectorized_backtest(df, signal_col='final_signal',
-                        fee=0.001, slippage=0.0005,
-                        initial_capital=10000.0):
-    """
-    Vectorized backtest - no look-ahead bias if signals
-    are constructed correctly (shift(1) for next-bar execution).
+                        fee=0.001, slippage=0.0005, initial_capital=10000.0):
+    """Vectorized backtest with next-bar execution and per-change costs.
+
+    The signal is shifted by one bar so that a signal formed on the close
+    of bar t is executed on bar t+1. This removes same-bar look-ahead.
     """
     df = df.copy()
-
-    # CRITICAL: today's signal -> execute at tomorrow's open
-    df['position']      = df[signal_col].shift(1).fillna(0)
+    df['position'] = df[signal_col].shift(1).fillna(0)
     df['price_returns'] = df['close'].pct_change()
 
-    # Cost model: fee (taker) + slippage, applied on every position change
+    # Cost applied on every change in position size (a flip from +1 to -1 costs 2x)
     position_changes = df['position'].diff().abs()
-    df['trade_cost']     = position_changes * (fee + slippage)
-    df['strat_returns']  = df['position'] * df['price_returns'] - df['trade_cost']
-    df['equity']         = initial_capital * (1 + df['strat_returns']).cumprod()
-
+    df['trade_cost'] = position_changes * (fee + slippage)
+    df['strat_returns'] = df['position'] * df['price_returns'] - df['trade_cost']
+    df['equity'] = initial_capital * (1 + df['strat_returns']).cumprod()
     return df
 
 result = composite_signal(df_feat)
 result = vectorized_backtest(result)
 ```
 
-### 8.2 Event-Based Backtesting with vectorbt
+### 8.2 Event-Based Backtest with vectorbt
+
+The vectorized backtest in 8.1 supports both long and short positions (`position` takes values −1, 0, +1). The `vbt.Portfolio.from_signals` configuration below is long/flat only — it treats `final_signal == -1` as an exit, not a short. The two engines therefore measure different strategies; use the vectorbt run as a cross-check on the long side, not as a replication of the vectorized result.
 
 ```python
 import vectorbt as vbt
 
 entries = result['final_signal'] == 1
-exits   = result['final_signal'] == -1
+exits = result['final_signal'] == -1  # exit long; not a short entry
 
 portfolio = vbt.Portfolio.from_signals(
-    result['close'],
-    entries,
-    exits,
-    size=0.95,          # 95% of capital per trade
-    fees=0.001,         # 0.1% taker fee (Binance)
-    slippage=0.0005,    # 0.05% slippage estimate
-    init_cash=10000,
-    freq='1D'
+    result['close'], entries, exits,
+    size=0.95, fees=0.001, slippage=0.0005,
+    init_cash=10000, freq='1D',
 )
-
-stats = portfolio.stats()
-print(stats)
+print(portfolio.stats())
 ```
 
-### 8.3 Common Bugs That Break Backtests
+### 8.3 Errors That Invalidate Backtests
 
 ```python
-# WRONG: Look-ahead bias
-# Today's signal executed on today's return
-df['signal']  = compute_signal(df)
-df['returns'] = df['signal'] * df['price_returns']  # uses same-bar return -> cheating
+# WRONG: same-bar look-ahead. The signal uses information from bar t
+# to trade bar t's return.
+df['signal'] = compute_signal(df)
+df['returns'] = df['signal'] * df['price_returns']
 
-# CORRECT: Shift the signal
-df['position'] = df['signal'].shift(1)  # execute on next bar
-df['returns']  = df['position'] * df['price_returns']
+# CORRECT: shift the signal so execution happens on the next bar.
+df['position'] = df['signal'].shift(1)
+df['returns'] = df['position'] * df['price_returns']
+```
 
-# WRONG: Data leakage in normalization
+```python
+# WRONG: normalization fit on the full series leaks future statistics
+# into past observations.
 scaler = StandardScaler()
-df['close_norm'] = scaler.fit_transform(df[['close']])  # fit on full dataset including future -> cheating
+df['close_norm'] = scaler.fit_transform(df[['close']])
 
-# CORRECT: Rolling normalization (only past data)
+# CORRECT: rolling normalization uses only past data at each point.
 def rolling_zscore(series, window=252):
     return (series - series.rolling(window).mean()) / series.rolling(window).std()
 
@@ -583,253 +616,227 @@ df['close_norm'] = rolling_zscore(df['close'])
 
 ## 9. Evaluation Metrics
 
-### Formulas and Benchmarks
+Total return alone is not sufficient to judge a strategy. The metrics below evaluate risk-adjusted performance and tail behavior.
 
-**Sharpe Ratio:**
+**Sharpe ratio**
+
 ```
-SR = (R_p - R_f) / σ_p × √T
+SR = (R_p - R_f) / sigma_p
 
-Where:
-  R_p = annualized strategy return
-  R_f = risk-free rate (≈ 0 for crypto, or use USDT yield)
-  σ_p = annualized return standard deviation
-  T   = 365 (daily), 52 (weekly)
-```
-
-Benchmarks: SR > 1.0 is the minimum bar, > 1.5 is decent, > 2.0 is strong. Live Sharpe is typically 30-50% lower than backtest.
-
-**Sortino Ratio** (more appropriate for crypto):
-```
-Sortino = (R_p - R_f) / σ_downside × √T
-
-σ_downside = std of NEGATIVE returns only
+R_p     = annualized return
+R_f     = risk-free rate (~0 for crypto, or a USDT yield)
+sigma_p = annualized standard deviation of returns
 ```
 
-Sortino doesn't penalize upside volatility, which matters when crypto spikes hard to the upside.
+Reference values: SR > 1.0 is the minimum bar, > 1.5 is reasonable, > 2.0 is strong. Live Sharpe is commonly 30–50% below backtest Sharpe.
 
-**Maximum Drawdown:**
+**Sortino ratio** — penalizes downside volatility only, which is more appropriate for an asset class with frequent large upside moves:
+
 ```
-MDD = max over t of: (peak_before_t - trough_after_t) / peak_before_t
+Sortino = (R_p - R_f) / sigma_downside
+sigma_downside = annualized std of negative returns only
 ```
 
-**Calmar Ratio:**
+**Maximum drawdown (MDD)**
+
+```
+MDD = max over t of (peak_before_t - trough_after_t) / peak_before_t
+```
+
+**Calmar ratio**
+
 ```
 Calmar = Annualized Return / |MDD|
 ```
 
-**Profit Factor:**
+**Profit factor**
+
 ```
-PF = Gross Profit / Gross Loss
-PF > 1.5 = viable, PF > 2.0 = good
+PF = gross profit / gross loss
+PF > 1.5 viable, PF > 2.0 good
 ```
 
 ```python
 def compute_metrics(equity_curve, returns, risk_free=0.0, freq=365):
-    """Compute all metrics at once"""
-    total_return = (equity_curve.iloc[-1] / equity_curve.iloc[0]) - 1
-
+    """Compute risk-adjusted performance metrics. freq=365 for daily crypto."""
+    returns = returns.dropna()
+    total_return = equity_curve.iloc[-1] / equity_curve.iloc[0] - 1
     ann_return = (1 + total_return) ** (freq / len(returns)) - 1
-    ann_vol    = returns.std() * np.sqrt(freq)
-    sharpe     = (ann_return - risk_free) / ann_vol if ann_vol != 0 else 0
+    ann_vol = returns.std() * np.sqrt(freq)
+    sharpe = (ann_return - risk_free) / ann_vol if ann_vol else 0
 
-    downside_returns = returns[returns < 0]
-    ann_downside_vol = downside_returns.std() * np.sqrt(freq)
-    sortino = (ann_return - risk_free) / ann_downside_vol if ann_downside_vol != 0 else 0
+    downside = returns[returns < 0]
+    downside_vol = downside.std() * np.sqrt(freq)
+    sortino = (ann_return - risk_free) / downside_vol if downside_vol else 0
 
-    rolling_max = equity_curve.cummax()
-    drawdown    = (equity_curve - rolling_max) / rolling_max
-    max_dd      = drawdown.min()
+    drawdown = (equity_curve - equity_curve.cummax()) / equity_curve.cummax()
+    max_dd = drawdown.min()
+    calmar = ann_return / abs(max_dd) if max_dd else 0
 
-    calmar = ann_return / abs(max_dd) if max_dd != 0 else 0
-
-    wins   = returns[returns > 0]
+    wins = returns[returns > 0]
     losses = returns[returns < 0]
-    profit_factor = wins.sum() / abs(losses.sum()) if losses.sum() != 0 else np.inf
-    win_rate      = len(wins) / len(returns[returns != 0]) if len(returns[returns != 0]) > 0 else 0
+    profit_factor = wins.sum() / abs(losses.sum()) if losses.sum() else np.inf
+    active = returns[returns != 0]
+    win_rate = len(wins) / len(active) if len(active) else 0
 
-    metrics = {
-        'Total Return':    f"{total_return:.2%}",
-        'Ann. Return':     f"{ann_return:.2%}",
+    return pd.Series({
+        'Total Return': f"{total_return:.2%}",
+        'Ann. Return': f"{ann_return:.2%}",
         'Ann. Volatility': f"{ann_vol:.2%}",
-        'Sharpe Ratio':    f"{sharpe:.3f}",
-        'Sortino Ratio':   f"{sortino:.3f}",
-        'Max Drawdown':    f"{max_dd:.2%}",
-        'Calmar Ratio':    f"{calmar:.3f}",
-        'Profit Factor':   f"{profit_factor:.3f}",
-        'Win Rate':        f"{win_rate:.2%}",
-        'Total Trades':    f"{len(returns[returns != 0])}"
-    }
+        'Sharpe Ratio': f"{sharpe:.3f}",
+        'Sortino Ratio': f"{sortino:.3f}",
+        'Max Drawdown': f"{max_dd:.2%}",
+        'Calmar Ratio': f"{calmar:.3f}",
+        'Profit Factor': f"{profit_factor:.3f}",
+        'Win Rate': f"{win_rate:.2%}",
+        'Total Trades': f"{len(active)}",
+    })
 
-    return pd.Series(metrics)
-
-metrics = compute_metrics(result['equity'], result['strat_returns'])
-print(metrics)
+print(compute_metrics(result['equity'], result['strat_returns']))
 ```
 
 ---
 
-## 10. Walk-Forward Validation & Overfitting Prevention
+## 10. Walk-Forward Validation and Robustness Checks
 
-This is the section most people skip and it's the main reason strategies look good in backtests but fall apart in production.
+In-sample backtest results overstate live performance. Walk-forward validation, where the model is fit on one window and evaluated on the following unseen window, is the primary defense against this and the main differentiator between strategies that survive deployment and those that do not.
 
 ### 10.1 Walk-Forward Architecture
 
 ```
-Historical data (e.g., 2019-2025):
-
 [==TRAIN 1==][TEST 1]
       [==TRAIN 2==][TEST 2]
             [==TRAIN 3==][TEST 3]
                   [==TRAIN 4==][TEST 4]
-                        [==TRAIN 5==][TEST 5]  ← OOS Final
+                        [==TRAIN 5==][TEST 5]  <- final out-of-sample
 ```
 
+A warmup buffer is prepended to each test window so that rolling indicators are valid from the first test bar. Without it, the rolling means, standard deviations, and z-scores at the start of each test window are computed on too few observations and the early signals are degraded.
+
 ```python
-def walk_forward_validation(df, train_window=365, test_window=90,
-                             param_grid=None):
-    """
-    Walk-forward: train on a window, test on the next period.
-    Repeat with a rolling window.
-    """
+def walk_forward_validation(df, train_window=365, test_window=90, warmup=60):
+    """Train the regime model on each window, evaluate on the next unseen window."""
     results = []
     n = len(df)
     start = 0
 
     while start + train_window + test_window <= n:
         train_end = start + train_window
-        test_end  = train_end + test_window
+        test_end = train_end + test_window
 
-        df_train = df.iloc[start:train_end].copy()
-        df_test  = df.iloc[train_end:test_end].copy()
+        df_train = df.iloc[start:train_end]
 
-        # 1. Fit regime model on train only
-        regimes_train, model, scaler, state_map = fit_hmm_regimes(
-            df_train,
-            features=['log_returns', 'volatility_7d', 'vol_ratio']
-        )
+        # Include `warmup` rows before the test window so rolling features are valid
+        warm_start = max(0, train_end - warmup)
+        df_test_full = df.iloc[warm_start:test_end].copy()
 
-        # 2. Predict regime on test (out-of-sample)
-        X_test        = df_test[['log_returns', 'volatility_7d', 'vol_ratio']].dropna().values
-        X_test_scaled = scaler.transform(X_test)
-        regimes_test_raw = model.predict(X_test_scaled)
-        regimes_test     = np.array([state_map.get(s, 1) for s in regimes_test_raw])
+        # Fit on train only; predict out-of-sample on the test window
+        _, model, scaler, state_map = fit_hmm_regimes(df_train, verbose=False)
+        regimes_test = predict_regimes(df_test_full, model, scaler, state_map)
+        df_test_full = df_test_full.join(regimes_test, how='inner')
 
-        df_test = df_test.iloc[-len(regimes_test):].copy()
-        df_test['regime'] = regimes_test
+        # Generate signals on the buffered frame, then keep only the true test window
+        df_test_full = composite_signal(df_test_full)
+        df_test_full = vectorized_backtest(df_test_full)
+        df_test = df_test_full.loc[df.index[train_end]:df.index[test_end - 1]]
 
-        # 3. Generate signals and backtest on test window
-        df_test = composite_signal(df_test)
-        df_test = vectorized_backtest(df_test)
-
-        period_return = df_test['strat_returns'].sum()
-        period_sharpe = (df_test['strat_returns'].mean() /
-                         df_test['strat_returns'].std() * np.sqrt(252)
-                         if df_test['strat_returns'].std() != 0 else 0)
-
+        rets = df_test['strat_returns']
+        sharpe = rets.mean() / rets.std() * np.sqrt(365) if rets.std() else 0
         results.append({
-            'start':    df_test.index[0],
-            'end':      df_test.index[-1],
-            'return':   period_return,
-            'sharpe':   period_sharpe,
-            'n_trades': (df_test['final_signal'] != 0).sum()
+            'start': df_test.index[0],
+            'end': df_test.index[-1],
+            'return': rets.sum(),
+            'sharpe': sharpe,
+            'n_trades': int((df_test['final_signal'] != 0).sum()),
         })
-
-        start += test_window  # roll forward
+        start += test_window
 
     return pd.DataFrame(results)
 
 wf_results = walk_forward_validation(df_feat)
 print(wf_results)
-print(f"\nMedian Out-of-Sample Sharpe: {wf_results['sharpe'].median():.3f}")
+print(f"\nMedian out-of-sample Sharpe: {wf_results['sharpe'].median():.3f}")
 print(f"Positive periods: {(wf_results['return'] > 0).mean():.2%}")
 ```
 
-### 10.2 Monte Carlo Simulation
+The Sharpe annualization here uses √365 to match the daily crypto convention used in `compute_metrics`. Mixing √252 (equities) and √365 (crypto) across the codebase produces metrics that are not comparable.
+
+### 10.2 Monte Carlo Resampling
+
+Resampling realized returns estimates the distribution of outcomes and the probability of severe loss. Bootstrap resampling assumes returns are independent; because crypto returns exhibit volatility clustering (Section 2.1), this understates the probability of consecutive losses. Treat the ruin probability as a lower bound, or use a block bootstrap to partially preserve serial structure.
 
 ```python
-def monte_carlo_simulation(returns, n_simulations=1000, confidence=0.95):
+def monte_carlo_simulation(returns, n_simulations=1000, confidence=0.95, ruin_level=0.5):
+    """Bootstrap equity curves to estimate the outcome distribution.
+
+    Note: i.i.d. resampling ignores volatility clustering and therefore
+    underestimates the probability of consecutive losses.
     """
-    Resample trade outcomes to estimate the distribution of equity curves.
-    """
+    returns = np.asarray(returns)
     n = len(returns)
-    equity_curves = []
+    finals = []
 
     for _ in range(n_simulations):
-        shuffled = np.random.choice(returns, size=n, replace=True)
-        equity   = 10000 * (1 + shuffled).cumprod()
-        equity_curves.append(equity)
+        sampled = np.random.choice(returns, size=n, replace=True)
+        finals.append(10000 * (1 + sampled).prod())
 
-    equity_array = np.array(equity_curves)
+    finals = np.array(finals)
+    ruin_probability = (finals < 10000 * ruin_level).mean()
 
-    lower = np.percentile(equity_array, (1 - confidence) * 100 / 2, axis=0)
-    upper = np.percentile(equity_array, 100 - (1 - confidence) * 100 / 2, axis=0)
-    median = np.median(equity_array, axis=0)
+    print(f"Median final equity: ${np.median(finals):,.0f}")
+    print(f"5th percentile:      ${np.percentile(finals, 5):,.0f}")
+    print(f"95th percentile:     ${np.percentile(finals, 95):,.0f}")
+    print(f"Ruin probability (<{ruin_level:.0%} capital): {ruin_probability:.2%}")
+    return finals
 
-    final_equities = equity_array[:, -1]
-    ruin_probability = (final_equities < 5000).mean()  # < 50% of starting capital
-
-    print(f"Median final equity: ${np.median(final_equities):,.0f}")
-    print(f"5th percentile:      ${np.percentile(final_equities, 5):,.0f}")
-    print(f"95th percentile:     ${np.percentile(final_equities, 95):,.0f}")
-    print(f"Ruin probability (<50% capital): {ruin_probability:.2%}")
-
-    return median, lower, upper
-
-mc_median, mc_lower, mc_upper = monte_carlo_simulation(
-    result['strat_returns'].dropna().values
-)
+_ = monte_carlo_simulation(result['strat_returns'].dropna().values)
 ```
 
 ---
 
-## 11. From Backtest to Live Trading
+## 11. Deployment
 
 ### 11.1 Pre-Deployment Checklist
 
-- [ ] **OOS Sharpe ≥ 0.7** (not in-sample)
-- [ ] **Live Sharpe is typically 30-50% lower than backtest** - adjust expectations accordingly
-- [ ] **Paper trade for at least 30 days** before deploying real capital
-- [ ] **Realistic slippage model:** add 0.1-0.3% on top for market orders
-- [ ] **Stress-test drawdown:** multiply backtest MDD × 2 as a conservative estimate
-- [ ] **Regime model should be retrained monthly** - the market doesn't stay the same
+* Out-of-sample Sharpe ≥ 0.7, measured on walk-forward test windows, not in-sample.
+* Expectation adjusted for a 30–50% reduction in live Sharpe relative to backtest.
+* Paper trading for at least 30 days before committing capital.
+* Slippage model widened by 0.1–0.3% for market orders.
+* Drawdown budget set to roughly 2× the backtest MDD as a conservative planning figure.
+* Regime model retrained on a fixed schedule (for example monthly).
 
-### 11.2 Position Sizing with Kelly Criterion
+### 11.2 Position Sizing with the Kelly Criterion
 
 ```
-Kelly fraction = (p × b - q) / b
+Kelly fraction = (p * b - q) / b
 
-Where:
-  p = win rate
-  b = average gain / average loss (reward-to-risk ratio)
-  q = 1 - p (loss rate)
+p = win rate
+q = 1 - p
+b = average win / average loss
 ```
 
 ```python
-def kelly_position_size(returns, fraction=0.5):
-    """
-    Full Kelly is usually too aggressive.
-    Half Kelly (fraction=0.5) is more practical.
-    """
-    wins   = returns[returns > 0]
+def kelly_position_size(returns, fraction=0.5, cap=0.25):
+    """Half-Kelly sizing, capped. Full Kelly is too aggressive in practice."""
+    wins = returns[returns > 0]
     losses = returns[returns < 0]
-
-    if len(wins) == 0 or len(losses) == 0:
+    active = returns[returns != 0]
+    if len(wins) == 0 or len(losses) == 0 or len(active) == 0:
         return 0.0
 
-    p = len(wins) / len(returns[returns != 0])
+    p = len(wins) / len(active)
     q = 1 - p
     b = wins.mean() / abs(losses.mean())
+    kelly = (p * b - q) / b
+    return max(0.0, min(kelly * fraction, cap))
 
-    kelly_full = (p * b - q) / b
-    kelly_frac = kelly_full * fraction
-
-    return max(0, min(kelly_frac, 0.25))  # cap at 25% per trade
-
-position_size = kelly_position_size(result['strat_returns'])
-print(f"Recommended position size (Half Kelly): {position_size:.2%}")
+position_size = kelly_position_size(result['strat_returns'].dropna())
+print(f"Half-Kelly position size: {position_size:.2%}")
 ```
 
-### 11.3 Live Bot Skeleton
+### 11.3 Live Execution Skeleton
+
+This skeleton is consistent with the rest of the pipeline: it fetches both price and on-chain data, computes the same features, and uses `predict_regimes` with the fitted `hmm_model`, `hmm_scaler`, and `hmm_state_map` so the inference feature set matches the training feature set exactly. Computing features on three columns while the scaler was fit on a different set is a dimension mismatch that fails at runtime; centralizing on `REGIME_FEATURES` prevents it.
 
 ```python
 import ccxt
@@ -838,107 +845,106 @@ import time
 
 def run_live_strategy():
     exchange = ccxt.binance({
-        'apiKey':          'YOUR_KEY',
-        'secret':          'YOUR_SECRET',
-        'enableRateLimit': True
+        'apiKey': 'YOUR_KEY',
+        'secret': 'YOUR_SECRET',
+        'enableRateLimit': True,
     })
 
-    # 1. Fetch latest data
-    ohlcv    = exchange.fetch_ohlcv('BTC/USDT', '1d', limit=300)
-    df_live  = pd.DataFrame(ohlcv, columns=['timestamp','open','high','low','close','volume'])
-    df_live['datetime'] = pd.to_datetime(df_live['timestamp'], unit='ms')
-    df_live.set_index('datetime', inplace=True)
+    # 1. Price data
+    ohlcv = exchange.fetch_ohlcv('BTC/USDT', '1d', limit=400)
+    live = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    live['datetime'] = pd.to_datetime(live['timestamp'], unit='ms')
+    live.set_index('datetime', inplace=True)
 
-    # 2. Compute features
-    df_live = compute_price_features(df_live)
+    # 2. On-chain data (required by the composite signal)
+    live['sopr'] = get_glassnode_metric('indicators/sopr')
+    live['mvrv'] = get_glassnode_metric('market/mvrv')
+    live['exchange_flow'] = get_glassnode_metric('distribution/exchange_net_position_change')
+    live = live.ffill()
 
-    # 3. Predict regime (use the already-fitted model)
-    X_live    = df_live[['log_returns','volatility_7d','vol_ratio']].dropna().values
-    X_scaled  = scaler.transform(X_live)
-    regime_pred = hmm_model.predict(X_scaled)
-    df_live   = df_live.iloc[-len(regime_pred):].copy()
-    df_live['regime'] = [state_map.get(s, 1) for s in regime_pred]
+    # 3. Features (same functions as the backtest)
+    live = compute_price_features(live)
+    live = compute_onchain_features(live)
+    live.dropna(inplace=True)
 
-    # 4. Generate signal
-    df_live        = composite_signal(df_live)
-    current_signal = df_live['final_signal'].iloc[-1]
+    # 4. Regime inference using the fitted model (same REGIME_FEATURES)
+    regimes_live = predict_regimes(live, hmm_model, hmm_scaler, hmm_state_map)
+    live = live.join(regimes_live, how='inner')
 
-    # 5. Execute (with validation)
-    balance      = exchange.fetch_balance()
-    current_btc  = balance['BTC']['free']
-    current_usdt = balance['USDT']['free']
+    # 5. Signal
+    live = composite_signal(live)
+    signal = live['final_signal'].iloc[-1]
+    regime = int(live['regime'].iloc[-1])
 
-    if current_signal == 1 and current_usdt > 100:
-        order_size = current_usdt * position_size / df_live['close'].iloc[-1]
-        exchange.create_market_buy_order('BTC/USDT', order_size)
-        print(f"BUY {order_size:.6f} BTC")
-    elif current_signal == -1 and current_btc > 0.001:
-        exchange.create_market_sell_order('BTC/USDT', current_btc)
-        print(f"SELL {current_btc:.6f} BTC")
+    # 6. Execution with balance checks
+    balance = exchange.fetch_balance()
+    free_btc = balance['BTC']['free']
+    free_usdt = balance['USDT']['free']
+    last_price = live['close'].iloc[-1]
+
+    if signal == 1 and free_usdt > 100:
+        size = free_usdt * position_size / last_price
+        exchange.create_market_buy_order('BTC/USDT', size)
+        print(f"BUY {size:.6f} BTC")
+    elif signal == -1 and free_btc > 0.001:
+        exchange.create_market_sell_order('BTC/USDT', free_btc)
+        print(f"SELL {free_btc:.6f} BTC")
     else:
-        print(f"HOLD (signal={current_signal}, regime={df_live['regime'].iloc[-1]})")
+        print(f"HOLD (signal={signal}, regime={regime})")
 
-# Run daily at 00:05 UTC (after daily candle closes)
+# Run shortly after the daily candle closes (00:05 UTC)
 schedule.every().day.at("00:05").do(run_live_strategy)
 while True:
     schedule.run_pending()
     time.sleep(60)
 ```
 
+On a spot account, `final_signal == -1` cannot open a short. The skeleton treats it as a flatten (sell to USDT), matching the long/flat behavior. To trade the short side, route −1 to a futures or margin account and adjust the balance and order logic accordingly.
+
 ---
 
-## 12. Honest Limitations
+## 12. Limitations
 
-This is the section most quant articles leave out and it's the most important one.
+### 12.1 Structural Constraints
 
-### 12.1 Structural Problems
-
-| Problem | What it means | Mitigation |
-|---------|---------------|------------|
-| **Overfitting** | The strategy memorized historical data. Backtest Sharpe is typically 30-50% higher than live | Walk-forward + mandatory OOS validation |
-| **Regime shift** | An HMM trained on 2019-2021 data may not hold in 2024-2025 | Retrain periodically, monitor performance degradation |
-| **Market impact** | Backtests don't model the fact that your own large orders move the price | Keep position size below 1% of daily volume |
-| **ETF distortion** | Since January 2024, spot BTC ETFs have changed on-chain dynamics | Incorporate ETF flow data into the model |
+| Constraint | Description | Mitigation |
+| --- | --- | --- |
+| Overfitting | Backtest Sharpe is commonly 30–50% above live Sharpe because the strategy fits historical noise | Walk-forward and mandatory out-of-sample validation |
+| Regime shift | An HMM fit on one period may not characterize a later period | Retrain on schedule; monitor performance decay |
+| Market impact | Backtests assume fills do not move the price | Keep order size below ~1% of daily volume |
+| Structural change | Spot BTC ETFs (since January 2024) altered on-chain and flow dynamics | Incorporate ETF flow data, or down-weight pre-2024 on-chain features |
 
 ### 12.2 Survivorship Bias
 
-Exchange data only contains tokens that are still trading. Delisted altcoins aren't in the dataset - which means altcoin backtests will always look more optimistic than reality. The simplest fix is to restrict analysis to BTC/ETH, where historical data is the cleanest.
-
-```python
-# Use CoinGecko data if you need coverage of delisted tokens,
-# or limit analysis to BTC/ETH for the most reliable history.
-```
+Exchange data contains only assets still listed. Delisted tokens are absent, so altcoin backtests are optimistic relative to the realized universe. Restricting analysis to BTC and ETH, which have the cleanest and longest histories, is the simplest mitigation. For broader coverage including delisted assets, a survivorship-bias-free data source is required.
 
 ### 12.3 Fundamental Limits
 
-No system can predict or preempt:
-- Exchange hacks (Mt.Gox, FTX, Bybit Feb 2025)
-- Sudden regulatory action
-- Insider information (project teams, early-stage VCs)
-
-The realistic goal is a system with a **small but consistent statistical edge** (+0.5-1% alpha per month after costs), not one that "solves" the market.
+The pipeline cannot anticipate exchange failures (for example Mt. Gox, FTX, or the Bybit incident in February 2025), regulatory actions, or non-public information held by project teams and early investors. The realistic objective is a small, consistent post-cost edge — on the order of +0.5–1% monthly alpha — rather than a system that solves the market. Risk controls, position limits, and drawdown budgets exist precisely because these tail events are unpredictable.
 
 ---
 
-## References & Tools
+## 13. References and Tools
 
-**Libraries:**
-- `ccxt` - connects to 100+ exchanges
-- `vectorbt` - fast vectorized backtesting
-- `hmmlearn` - Hidden Markov Models
-- `backtrader` - event-based backtesting
-- `quantstats` - automated performance reports
+**Libraries**
 
-**Data Platforms:**
-- Glassnode API: [docs.glassnode.com](https://docs.glassnode.com)
-- CryptoQuant: [cryptoquant.com/product/api](https://cryptoquant.com/product/api)
-- Dune Analytics: [dune.com](https://dune.com) (on-chain SQL, free tier)
+* `ccxt` — unified exchange API client
+* `vectorbt` — vectorized backtesting
+* `hmmlearn` — hidden Markov models
+* `backtrader` — event-based backtesting
+* `quantstats` — performance reporting
 
-**Academic Papers:**
-- "Cryptocurrency Market Microstructure" - Annals of Operations Research (2023)
-- "Pump and Dumps in the Bitcoin Era" - La Morgia et al., [arXiv:2005.06610](https://arxiv.org/abs/2005.06610)
-- "Markov and HMM for Regime Detection in Crypto Markets" - [Preprints.org (2026)](https://www.preprints.org/manuscript/202603.0831)
+**Data platforms**
+
+* Glassnode — https://docs.glassnode.com (verify current free-tier metric availability)
+* CryptoQuant — https://cryptoquant.com/product/api
+* Dune Analytics — https://dune.com (on-chain SQL, free tier)
+
+**Background reading**
+
+* L. La Morgia et al., "Pump and Dump in the Bitcoin Era," arXiv:2005.06610 — https://arxiv.org/abs/2005.06610
+* Literature on cryptocurrency market microstructure and on HMM-based regime detection. Verify specific titles, venues, and dates against the source databases before citing, as some preprints are not peer-reviewed.
 
 ---
 
-*For research and educational purposes. Not financial advice.*
+*For research and educational purposes only. Not financial advice. All code is provided as a starting point and requires independent validation before any use with real capital.*
