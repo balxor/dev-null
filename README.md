@@ -113,7 +113,7 @@ And don't make it worse.
 
 ## CONTACT
 
-`betha@mahameru.org`
+`__null__`
 
 I read everything.  
 I reply to things worth replying to.
