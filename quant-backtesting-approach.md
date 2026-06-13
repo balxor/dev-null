@@ -1,8 +1,8 @@
 # Reverse Engineering the Crypto Market
 
-**Author:** Betha Morrison   
+**Author:** Kenshin Himura   
 **Level:** Intermediate–Advanced   
-**Scope:** A complete research pipeline — data collection, feature engineering, regime detection, signal generation, backtesting, validation, and live deployment — with working code and documented limitations.
+**Scope:** A complete research pipeline - data collection, feature engineering, regime detection, signal generation, backtesting, validation, and live deployment - with working code and documented limitations.
 
 ---
 
@@ -570,7 +570,7 @@ result = vectorized_backtest(result)
 
 ### 8.2 Event-Based Backtest with vectorbt
 
-The vectorized backtest in 8.1 supports both long and short positions (`position` takes values −1, 0, +1). The `vbt.Portfolio.from_signals` configuration below is long/flat only — it treats `final_signal == -1` as an exit, not a short. The two engines therefore measure different strategies; use the vectorbt run as a cross-check on the long side, not as a replication of the vectorized result.
+The vectorized backtest in 8.1 supports both long and short positions (`position` takes values −1, 0, +1). The `vbt.Portfolio.from_signals` configuration below is long/flat only - it treats `final_signal == -1` as an exit, not a short. The two engines therefore measure different strategies; use the vectorbt run as a cross-check on the long side, not as a replication of the vectorized result.
 
 ```python
 import vectorbt as vbt
@@ -630,7 +630,7 @@ sigma_p = annualized standard deviation of returns
 
 Reference values: SR > 1.0 is the minimum bar, > 1.5 is reasonable, > 2.0 is strong. Live Sharpe is commonly 30–50% below backtest Sharpe.
 
-**Sortino ratio** — penalizes downside volatility only, which is more appropriate for an asset class with frequent large upside moves:
+**Sortino ratio** - penalizes downside volatility only, which is more appropriate for an asset class with frequent large upside moves:
 
 ```
 Sortino = (R_p - R_f) / sigma_downside
@@ -920,7 +920,7 @@ Exchange data contains only assets still listed. Delisted tokens are absent, so 
 
 ### 12.3 Fundamental Limits
 
-The pipeline cannot anticipate exchange failures (for example Mt. Gox, FTX, or the Bybit incident in February 2025), regulatory actions, or non-public information held by project teams and early investors. The realistic objective is a small, consistent post-cost edge — on the order of +0.5–1% monthly alpha — rather than a system that solves the market. Risk controls, position limits, and drawdown budgets exist precisely because these tail events are unpredictable.
+The pipeline cannot anticipate exchange failures (for example Mt. Gox, FTX, or the Bybit incident in February 2025), regulatory actions, or non-public information held by project teams and early investors. The realistic objective is a small, consistent post-cost edge - on the order of +0.5–1% monthly alpha - rather than a system that solves the market. Risk controls, position limits, and drawdown budgets exist precisely because these tail events are unpredictable.
 
 ---
 
@@ -928,21 +928,21 @@ The pipeline cannot anticipate exchange failures (for example Mt. Gox, FTX, or t
 
 **Libraries**
 
-* `ccxt` — unified exchange API client
-* `vectorbt` — vectorized backtesting
-* `hmmlearn` — hidden Markov models
-* `backtrader` — event-based backtesting
-* `quantstats` — performance reporting
+* `ccxt` - unified exchange API client
+* `vectorbt` - vectorized backtesting
+* `hmmlearn` - hidden Markov models
+* `backtrader` - event-based backtesting
+* `quantstats` - performance reporting
 
 **Data platforms**
 
-* Glassnode — https://docs.glassnode.com (verify current free-tier metric availability)
-* CryptoQuant — https://cryptoquant.com/product/api
-* Dune Analytics — https://dune.com (on-chain SQL, free tier)
+* Glassnode - https://docs.glassnode.com (verify current free-tier metric availability)
+* CryptoQuant - https://cryptoquant.com/product/api
+* Dune Analytics - https://dune.com (on-chain SQL, free tier)
 
 **Background reading**
 
-* L. La Morgia et al., "Pump and Dump in the Bitcoin Era," arXiv:2005.06610 — https://arxiv.org/abs/2005.06610
+* L. La Morgia et al., "Pump and Dump in the Bitcoin Era," arXiv:2005.06610 - https://arxiv.org/abs/2005.06610
 * Literature on cryptocurrency market microstructure and on HMM-based regime detection. Verify specific titles, venues, and dates against the source databases before citing, as some preprints are not peer-reviewed.
 
 ---
