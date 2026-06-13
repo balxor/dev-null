@@ -1,7 +1,9 @@
 # Reverse Engineering the Crypto Market
 
 **Author:** Betha Morrison
+
 **Level:** Intermediate–Advanced
+
 **Scope:** A complete research pipeline — data collection, feature engineering, regime detection, signal generation, backtesting, validation, and live deployment — with working code and documented limitations.
 
 ---
