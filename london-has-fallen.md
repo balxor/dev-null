@@ -188,19 +188,12 @@ Penyebab utama biasanya gabungan dari power gap, moral drop, leadership fatigue,
 ## Referensi
 
 [1] Chee Siang Ang & Panayiotis Zaphiris, "Social Roles of Players in MMORPG Guilds: A social network analytic perspective."
-
 [2] "Sense of Community, Social Identity and Social Support Among Players of Massively Multiplayer Online Games."
-
 [3] Realistic conflict theory dan kompetisi atas resource terbatas, merujuk pada tradisi riset Muzafer Sherif.
-
 [4] Nicolas Ducheneaut, Nicholas Yee, Eric Nickell, dan Robert J. Moore, "The Life and Death of Online Gaming Communities: A Look at Guilds in World of Warcraft."
-
 [5] Social identity theory, Henri Tajfel dan John Turner.
-
 [6] "Churn prediction in MMORPGs: A social influence based approach."
-
 [7] Haewoon Kwak, Jeremy Blackburn, dan Seungyeop Han, "Exploring Cyberbullying and Other Toxic Behavior in Team Competition Online Games."
-
 
 ---
 
