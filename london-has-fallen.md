@@ -579,15 +579,15 @@ Next month priority:
 
 ## Referensi
 
-[1] Siang Ang, Zaphiris, "Social Roles of Players in MMORPG Guilds: A social network analytic perspective."  
-[2] "Sense of Community, Social Identity and Social Support Among Players of Massively Multiplayer Online Games."  
-[3] Realistic conflict theory dan kompetisi atas resource terbatas, merujuk pada tradisi riset Muzafer Sherif.  
-[4] Ducheneaut, Yee, Nickell, Moore, "The Life and Death of Online Gaming Communities: A Look at Guilds in World of Warcraft."  
-[5] Social identity theory, Henri Tajfel and John Turner.  
-[6] "Churn prediction in MMORPGs: A social influence based approach."  
-[7] Kwak, Blackburn, Han, "Exploring Cyberbullying and Other Toxic Behavior in Team Competition Online Games."  
-[8] Lewis A. Coser, *The Functions of Social Conflict*.  
-[9] Morton Deutsch, "A Theory of Co-operation and Competition."  
+[01] Siang Ang, Zaphiris, "Social Roles of Players in MMORPG Guilds: A social network analytic perspective."  
+[02] "Sense of Community, Social Identity and Social Support Among Players of Massively Multiplayer Online Games."  
+[03] Realistic conflict theory dan kompetisi atas resource terbatas, merujuk pada tradisi riset Muzafer Sherif.  
+[04] Ducheneaut, Yee, Nickell, Moore, "The Life and Death of Online Gaming Communities: A Look at Guilds in World of Warcraft."  
+[05] Social identity theory, Henri Tajfel and John Turner.  
+[06] "Churn prediction in MMORPGs: A social influence based approach."  
+[07] Kwak, Blackburn, Han, "Exploring Cyberbullying and Other Toxic Behavior in Team Competition Online Games."  
+[08] Lewis A. Coser, *The Functions of Social Conflict*.  
+[09] Morton Deutsch, "A Theory of Co-operation and Competition."  
 [10] Mark Granovetter, "Threshold Models of Collective Behavior."  
 [11] Albert O. Hirschman, *Exit, Voice, and Loyalty*.  
 [12] Elinor Ostrom, *Governing the Commons*.  
