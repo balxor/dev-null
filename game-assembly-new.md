@@ -232,5 +232,5 @@ Game dijalankan setelah patch tanpa Frida - tidak crash. Dengan Frida + attack-h
 
 ## Note
 
-Saya tidak bisa membagi script rox-silence.js di dalam repository ini.
+Saya tidak bisa membagi script rox-silence.js di dalam repository ini.  
 /dev/null
