@@ -1,6 +1,6 @@
 # ROX Anti-Cheat & Protection Analysis
 
-Post-update analysis of Ragnarok X: Next Generation (PC version). Game version 4.1.3, updated June 16, 2026.
+Post-update analysis of Ragnarok X: Next Generation (PC version). Game version 4.1.3, updated June 16, 2026.  
 by: Himura, DSTH.  
 
 ## Architecture
