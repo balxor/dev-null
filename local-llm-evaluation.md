@@ -1,9 +1,9 @@
 # Local LLM Evaluation for Security-Oriented Workflows
 
-**Author:** Kenshin Himura
-**Date:** 2026-06-27
-**Revision:** v3
-**Scope:** Local LLM evaluation for CTF, penetration testing, reverse engineering and AI-assisted security workflow design
+**Author:** Kenshin Himura  
+**Date:** 2026-06-27  
+**Revision:** v3  
+**Scope:** Local LLM evaluation for CTF, penetration testing, reverse engineering and AI-assisted security workflow design  
 
 ## Abstract
 
@@ -675,4 +675,4 @@ finish reason
 error count
 ```
 
-* `Kenshin Himura - DTrust`
+## `Kenshin Himura - DTrust`
