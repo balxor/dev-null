@@ -1,9 +1,9 @@
 # Local LLM Evaluation for Security-Oriented Workflows
 
-**Author:** Kenshin Himura  
-**Date:** 2026-06-27  
-**Revision:** v3  
-**Scope:** Local LLM evaluation for CTF, penetration testing, reverse engineering and AI-assisted security workflow design  
+**Author:** Kenshin Himura
+**Date:** 2026-06-27
+**Revision:** v3
+**Scope:** Local LLM evaluation for CTF, penetration testing, reverse engineering and AI-assisted security workflow design
 
 ## Abstract
 
@@ -14,7 +14,7 @@ This report evaluates two locally hosted LLM profiles for security-oriented task
 
 The evaluation includes qualitative analysis across six CTF and penetration-testing style task categories, followed by warm-state performance measurements using an Ollama OpenAI-compatible endpoint.
 
-The results indicate that `ravenx-redteam` provides stronger generation stability and better security-task structure for assessment-oriented work. `qwythos-general` is more appropriate as a lightweight daily assistant for OpenCode-style engineering workflows, but the tested profile showed instability on exploit-heavy prompts.
+The results indicate that `ravenx-redteam` provides stronger generation stability and better security-task structure for assessment-oriented work. `qwythos-general` is more appropriate as a lightweight daily assistant for local agent style engineering workflows, but the tested profile showed instability on exploit-heavy prompts.
 
 The report does not treat any model output as operational evidence. Payloads and exploit steps are classified as candidate outputs unless validated through local execution, binary inspection, or runtime testing.
 
@@ -33,7 +33,7 @@ The evaluation focuses on local AI workflow design rather than model ranking alo
 
 | Model                    |                                Role | Approximate Size | Intended Usage                                             |
 | ------------------------ | ----------------------------------: | ---------------: | ---------------------------------------------------------- |
-| `qwythos-general:latest` | General-purpose technical assistant |           7.6 GB | OpenCode daily workflow, engineering support               |
+| `qwythos-general:latest` | General-purpose technical assistant |           7.6 GB | Local agent daily workflow, engineering support            |
 | `ravenx-redteam:latest`  |       Security-assessment assistant |            21 GB | Pentest planning, red team reasoning, vulnerability triage |
 
 The full local Ollama model stack also includes specialized Qwythos profiles:
@@ -326,7 +326,7 @@ A single-model workflow is not recommended. A routed model stack is more suitabl
 
 | Task                                  | Recommended Model   |
 | ------------------------------------- | ------------------- |
-| Daily OpenCode work                   | `qwythos-general`   |
+| Daily local agent work                | `qwythos-general`   |
 | Source code review                    | `qwythos-codeaudit` |
 | Reverse engineering                   | `qwythos-re`        |
 | Binary exploitation lab               | `qwythos-binarylab` |
@@ -498,7 +498,7 @@ Examples of interpretation:
 Recommended role:
 
 ```text
-Daily engineering, OpenCode workflow, source navigation, documentation, basic troubleshooting.
+Daily engineering, local agent workflow, source navigation, documentation, basic troubleshooting.
 ```
 
 Suggested parameter range:
@@ -654,7 +654,7 @@ The evaluation supports a routed local LLM architecture.
 
 `ravenx-redteam` is more suitable for security-assessment workflows, vulnerability triage and Pentagi-style agent use. It showed better generation stability and stronger security-task structure in the initial qualitative test.
 
-`qwythos-general` is better positioned as a daily local assistant for OpenCode and general engineering work. It showed more predictable warm-state latency but weaker output stability on exploit-heavy prompts.
+`qwythos-general` is better positioned as a daily local assistant for local agent and general engineering work. It showed more predictable warm-state latency but weaker output stability on exploit-heavy prompts.
 
 The main implementation requirement is a verification-first workflow. Model output should be treated as candidate material until validated through scripts, command output, binary behavior, HTTP responses, or runtime execution logs.
 
@@ -675,4 +675,4 @@ finish reason
 error count
 ```
 
-### `Kenshin Himura - DTrust`
+* `Kenshin Himura - DTrust`
