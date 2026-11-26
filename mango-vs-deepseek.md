@@ -57,21 +57,30 @@ Both providers received identical prompts. Each answer was graded automatically 
 | trap | n/a | n/a | 3/3 | 3/3 |
 | **Total** | **60/60** | **60/60** | **68/69** | **69/69** |
 
+**Legend:** 🟦 **MangoBoost** (blue bars) &nbsp;&nbsp; 🟧 **DeepSeek Direct** (orange bars)
+
 ```mermaid
+%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#2563eb, #f97316"}}}}%%
 xychart-beta
-    title "Pass rate (%) by round"
-    x-axis ["R1 MangoBoost", "R1 DeepSeek", "R2 MangoBoost", "R2 DeepSeek"]
-    y-axis "Pass rate (%)" 90 --> 100
-    bar [100, 100, 98.6, 100]
+    title "Pass rate (%) by round: blue = MangoBoost, orange = DeepSeek Direct"
+    x-axis ["R1 MangoBoost", "R1 DeepSeek Direct", "R2 MangoBoost", "R2 DeepSeek Direct"]
+    y-axis "Pass rate (%)" 0 --> 100
+    bar [100, 0, 98.6, 0]
+    bar [0, 100, 0, 100]
 ```
+
+The y-axis starts at 0 so the bars are not visually exaggerated. The only gap is R2: MangoBoost 98.6% (68/69) vs DeepSeek Direct 100% (69/69), one failed run.
 
 ### Latency per test, round 2
 
-Mean latency per test (seconds), averaged over 3 runs. In the chart, the **first line is MangoBoost** and the **second line is DeepSeek Direct**.
+Mean latency per test (seconds), averaged over 3 runs. Lower is better.
+
+**Legend:** 🟦 **MangoBoost** (blue line) &nbsp;&nbsp; 🟧 **DeepSeek Direct** (orange line)
 
 ```mermaid
+%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#2563eb, #f97316"}}}}%%
 xychart-beta
-    title "R2 latency per test (s): MangoBoost (line 1) vs DeepSeek Direct (line 2)"
+    title "R2 latency per test (s): blue = MangoBoost, orange = DeepSeek Direct"
     x-axis [b1, b2, b3, c1, c2, c3, c4, f1, f2, f3, i1, i2, i3, j1, j2, l1, l2, l3, m1, m2, m3, m4, a1]
     y-axis "Latency (s)" 0 --> 10
     line [0.74, 0.96, 0.84, 0.88, 2.03, 1.06, 0.81, 0.42, 0.47, 0.50, 1.01, 1.89, 0.92, 0.63, 0.45, 0.86, 1.05, 0.50, 0.79, 0.70, 0.84, 0.60, 1.15]
@@ -80,24 +89,61 @@ xychart-beta
 
 ### Latency per test, round 1
 
+**Legend:** 🟦 **MangoBoost** (blue line) &nbsp;&nbsp; 🟧 **DeepSeek Direct** (orange line)
+
 ```mermaid
+%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#2563eb, #f97316"}}}}%%
 xychart-beta
-    title "R1 latency per test (s): MangoBoost (line 1) vs DeepSeek Direct (line 2)"
+    title "R1 latency per test (s): blue = MangoBoost, orange = DeepSeek Direct"
     x-axis [b1, b2, c1, c2, c3, f1, f2, f3, i1, i2, i3, j1, j2, l1, l2, l3, m1, m2, m3, m4]
     y-axis "Latency (s)" 0 --> 3.5
     line [1.39, 1.23, 1.10, 1.08, 1.08, 0.42, 0.42, 0.49, 0.56, 1.22, 0.49, 0.45, 0.44, 0.44, 0.77, 0.82, 0.60, 0.56, 0.70, 0.49]
     line [2.98, 1.78, 3.06, 2.16, 2.62, 0.62, 0.64, 1.26, 1.33, 2.23, 0.72, 0.78, 0.94, 1.03, 1.06, 2.76, 1.50, 1.09, 1.62, 1.52]
 ```
 
-### Speedup factor (DeepSeek latency / MangoBoost latency)
+### Response time comparison
+
+**Legend:** 🟦 **MangoBoost** (blue bars) &nbsp;&nbsp; 🟧 **DeepSeek Direct** (orange bars) &nbsp;&nbsp; *Shorter bar = faster response.*
 
 ```mermaid
+%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#2563eb, #f97316"}}}}%%
 xychart-beta
-    title "R2 speedup per test (x times faster on MangoBoost)"
-    x-axis [b1, b2, b3, c1, c2, c3, c4, f1, f2, f3, i1, i2, i3, j1, j2, l1, l2, l3, m1, m2, m3, m4, a1]
-    y-axis "Speedup (x)" 0 --> 7
-    bar [6.9, 4.2, 2.9, 3.2, 4.5, 2.5, 3.4, 1.5, 2.7, 2.1, 2.8, 4.0, 1.8, 2.1, 2.3, 3.0, 5.5, 1.8, 2.3, 1.6, 2.5, 2.7, 2.4]
+    title "Average response time (seconds, lower is better)"
+    x-axis ["R1 MangoBoost", "R1 DeepSeek Direct", "R2 MangoBoost", "R2 DeepSeek Direct"]
+    y-axis "Seconds" 0 --> 2.5
+    bar [0.71, 0, 0.97, 0]
+    bar [0, 1.54, 0, 2.37]
 ```
+
+```mermaid
+%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#2563eb, #f97316"}}}}%%
+xychart-beta
+    title "Slowest 5% of requests, p95 (seconds, lower is better)"
+    x-axis ["R1 MangoBoost", "R1 DeepSeek Direct", "R2 MangoBoost", "R2 DeepSeek Direct"]
+    y-axis "Seconds" 0 --> 6
+    bar [1.33, 0, 2.02, 0]
+    bar [0, 2.98, 0, 5.73]
+```
+
+### Response time by task type (round 2)
+
+**Legend:** 🟦 **MangoBoost** (blue bars) &nbsp;&nbsp; 🟧 **DeepSeek Direct** (orange bars) &nbsp;&nbsp; *Shorter bar = faster response.*
+
+MB = MangoBoost, DS = DeepSeek Direct. Each pair shows the average response time for one task type.
+
+```mermaid
+%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#2563eb, #f97316"}}}}%%
+xychart-beta
+    title "R2 average response time by task type (seconds, lower is better)"
+    x-axis ["Bahasa MB", "Bahasa DS", "Code MB", "Code DS", "Factual MB", "Factual DS", "Instruction MB", "Instruction DS", "JSON MB", "JSON DS", "Logic MB", "Logic DS", "Math MB", "Math DS", "Trap MB", "Trap DS"]
+    y-axis "Seconds" 0 --> 4.5
+    bar [0.85, 0, 1.2, 0, 0.46, 0, 1.27, 0, 0.54, 0, 0.8, 0, 0.73, 0, 1.15, 0]
+    bar [0, 3.86, 0, 4.3, 0, 0.97, 0, 3.98, 0, 1.18, 0, 3.09, 0, 1.68, 0, 2.77]
+```
+
+**How to read it:** MangoBoost (blue) is shorter than DeepSeek Direct (orange) in every task type. The gap is smallest for short factual answers (0.46 s vs 0.97 s) and largest for long outputs such as code, instructions, and Indonesian paragraphs (3x to 4.5x faster).
+
+Per-test speedup (DeepSeek Direct latency divided by MangoBoost latency):
 
 | Round | Min speedup | Median speedup | Max speedup |
 |---|---|---|---|
